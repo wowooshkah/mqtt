@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Мониторинг температуры — WQTT</title>
+    <!-- Убираем 404 ошибку favicon -->
+    <link rel="icon" href="data:,">
+    <!-- Полная рабочая ссылка на библиотеку MQTT.js -->
     <script src="https://unpkg.com"></script>
     <style>
         body {
@@ -55,7 +58,6 @@
         button.danger:hover { background: #b02a37; }
         .hidden { display: none; }
 
-        /* Стили для карточек температуры */
         .avg-box {
             background: linear-gradient(135deg, #0062cc, #007bff);
             color: #fff;
@@ -109,7 +111,6 @@
 </head>
 <body>
 
-    <!-- Форма входа -->
     <div id="login-card" class="card">
         <h3>Подключение к WQTT.RU</h3>
         <form id="auth-form">
@@ -129,21 +130,18 @@
         </form>
     </div>
 
-    <!-- Панель мониторинга -->
     <div id="dashboard-card" class="card hidden">
         <div class="header-bar">
             <div>Статус: <strong id="status" style="color: orange;">Подключение...</strong></div>
             <button class="danger" onclick="logout()">Сбросить данные</button>
         </div>
 
-        <!-- Средняя температура -->
         <div class="avg-box">
             <div class="avg-label">Средняя температура</div>
             <div class="avg-value" id="val-avg">-- °C</div>
             <div class="sensor-time" id="time-avg" style="color: rgba(255,255,255,0.8);">Ожидание данных...</div>
         </div>
 
-        <!-- Отдельные датчики -->
         <div class="sensors-grid">
             <div class="sensor-item">
                 <div class="sensor-name">Датчик 1</div>
@@ -167,7 +165,6 @@
         const STORAGE_KEY = 'wqtt_mqtt_credentials';
         let client = null;
 
-        // Карта соответствия ваших топиков и элементов на странице
         const TOPICS_MAP = {
             'thermo/avg/temperature': { valId: 'val-avg', timeId: 'time-avg' },
             'thermo/28FF9311911604A2/temperature': { valId: 'val-s1', timeId: 'time-s1' },
@@ -204,7 +201,7 @@
             statusEl.innerText = 'Подключение...';
             statusEl.style.color = 'orange';
 
-            const brokerUrl = `wss://${creds.host}:${creds.port}`;
+            const brokerUrl = `wss://${creds.host}:${creds.port}/mqtt`;
 
             client = mqtt.connect(brokerUrl, {
                 username: creds.username,
@@ -217,7 +214,6 @@
                 statusEl.innerText = 'Онлайн';
                 statusEl.style.color = 'green';
 
-                // Подписываемся на все указанные топики
                 Object.keys(TOPICS_MAP).forEach((topic) => {
                     client.subscribe(topic);
                 });
@@ -228,7 +224,7 @@
                 if (target) {
                     const value = parseFloat(message.toString());
                     const formatted = isNaN(value) ? message.toString() : `${value.toFixed(2)} °C`;
-                    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    const now = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
                     document.getElementById(target.valId).innerText = formatted;
                     document.getElementById(target.timeId).innerText = `Обновлено: ${now}`;
