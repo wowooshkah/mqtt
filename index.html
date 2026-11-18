@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Панель управления WQTT</title>
+    <!-- Подключаем официальный CDN библиотеки MQTT.js -->
+    <script src="https://unpkg.com"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 480px;
+            margin: 30px auto;
+            padding: 0 15px;
+            background: #f4f6f8;
+            color: #333;
+        }
+        .card {
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 6px 0 14px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 15px;
+        }
+        button {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 500;
+            background: #007bff;
+            color: #fff;
+        }
+        button:hover { background: #0056b3; }
+        button.danger { background: #dc3545; float: right; font-size: 13px; padding: 6px 12px; }
+        button.danger:hover { background: #b02a37; }
+        button.on { background: #28a745; margin-right: 8px; }
+        button.off { background: #6c757d; }
+        .hidden { display: none; }
+        #log {
+            background: #1e1e1e;
+            color: #00ff66;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Блок 1: Форма ввода данных (показывается, если данные еще не сохранены) -->
+    <div id="login-card" class="card">
+        <h3>Подключение к WQTT.RU</h3>
+        <form id="auth-form">
+            <label>Сервер (хост):</label>
+            <input type="text" id="host" placeholder="Например: m1.wqtt.ru" required>
+
+            <label>Порт WebSockets (SSL / WSS):</label>
+            <input type="number" id="port" placeholder="Указан в ЛК WQTT" required>
+
+            <label>Логин брокера:</label>
+            <input type="text" id="username" required>
+
+            <label>Пароль брокера:</label>
+            <input type="password" id="password" required>
+
+            <button type="submit" style="width: 100%;">Сохранить и подключиться</button>
+        </form>
+    </div>
+
+    <!-- Блок 2: Панель управления (показывается после сохранения данных) -->
+    <div id="dashboard-card" class="card hidden">
+        <button class="danger" onclick="logout()">Сбросить данные</button>
+        <h3>Статус: <span id="status" style="color: orange;">Подключение...</span></h3>
+
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
+
+        <p><strong>Управление (пример):</strong></p>
+        <button class="on" onclick="sendCommand('myhome/light/set', 'ON')">Включить свет</button>
+        <button class="off" onclick="sendCommand('myhome/light/set', 'OFF')">Выключить свет</button>
+
+        <p style="margin-top: 20px;"><strong>Входящие сообщения:</strong></p>
+        <div id="log">Ожидание сообщений...</div>
+    </div>
+
+    <script>
+        const STORAGE_KEY = 'wqtt_mqtt_credentials';
+        let client = null;
+
+        const loginCard = document.getElementById('login-card');
+        const dashboardCard = document.getElementById('dashboard-card');
+        const statusEl = document.getElementById('status');
+        const logEl = document.getElementById('log');
+
+        // Проверяем при загрузке страницы, есть ли сохраненные данные
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedData = localStorage.getItem(STORAGE_KEY);
+            if (savedData) {
+                const creds = JSON.parse(savedData);
+                connectToBroker(creds);
+            }
+        });
+
+        // Сохраняем данные из формы в localStorage
+        document.getElementById('auth-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const creds = {
+                host: document.getElementById('host').value.trim(),
+                port: document.getElementById('port').value.trim(),
+                username: document.getElementById('username').value.trim(),
+                password: document.getElementById('password').value
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(creds));
+            connectToBroker(creds);
+        });
+
+        // Подключение к брокеру WQTT.RU
+        function connectToBroker(creds) {
+            loginCard.classList.add('hidden');
+            dashboardCard.classList.remove('hidden');
+            statusEl.innerText = 'Подключение...';
+            statusEl.style.color = 'orange';
+
+            // Пробуем стандартный путь /mqtt для WSS
+            const brokerUrl = `wss://${creds.host}:${creds.port}/mqtt`;
+
+            client = mqtt.connect(brokerUrl, {
+                username: creds.username,
+                password: creds.password,
+                clientId: 'gh_pages_' + Math.random().toString(16).substring(2, 8),
+                reconnectPeriod: 5000
+            });
+
+            client.on('connect', () => {
+                statusEl.innerText = 'Подключено';
+                statusEl.style.color = 'green';
+                addLog('Успешное подключение к ' + creds.host);
+
+                // Подписываемся на все топики или укажите конкретный (например, 'myhome/#')
+                client.subscribe('#', (err) => {
+                    if (!err) addLog('Подписка на топики активна');
+                });
+            });
+
+            client.on('message', (topic, message) => {
+                addLog(`[${topic}] ${message.toString()}`);
+            });
+
+            client.on('error', (err) => {
+                statusEl.innerText = 'Ошибка подключения';
+                statusEl.style.color = 'red';
+                addLog('Ошибка: ' + err.message);
+            });
+
+            client.on('close', () => {
+                statusEl.innerText = 'Отключено';
+                statusEl.style.color = 'gray';
+            });
+        }
+
+        // Отправка команды
+        function sendCommand(topic, payload) {
+            if (client && client.connected) {
+                client.publish(topic, payload);
+                addLog(`Отправлено -> [${topic}]: ${payload}`);
+            } else {
+                alert('Нет подключения к брокеру!');
+            }
+        }
+
+        // Вывод текста в окно логов
+        function addLog(text) {
+            if (logEl.innerText === 'Ожидание сообщений...') {
+                logEl.innerHTML = '';
+            }
+            const line = document.createElement('div');
+            const time = new Date().toLocaleTimeString();
+            line.innerText = `${time} | ${text}`;
+            logEl.prepend(line);
+        }
+
+        // Очистка данных из памяти браузера
+        function logout() {
+            if (client) client.end();
+            localStorage.removeItem(STORAGE_KEY);
+            location.reload();
+        }
+    </script>
+</body>
+</html>
