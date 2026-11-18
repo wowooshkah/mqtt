@@ -204,7 +204,7 @@
             statusEl.innerText = 'Подключение...';
             statusEl.style.color = 'orange';
 
-            const brokerUrl = `wss://${creds.host}:${creds.port}/mqtt`;
+            const brokerUrl = `wss://${creds.host}:${creds.port}`;
 
             client = mqtt.connect(brokerUrl, {
                 username: creds.username,
